@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>byow-check relay</title>
+<script>
+// Runs on a SECOND origin, loaded into the very iframe that opened the wallet, so it holds the same
+// window.opener relationship from a different origin. It tries to talk to a wallet that already
+// locked onto the first origin. A correct wallet ignores it.
+const q = new URLSearchParams(location.search);
+const w = window.open("", q.get("name")); // look the popup up by name; does not navigate it
+const got = [];
+addEventListener("message", (e) => { if (e.source === w) got.push({ origin: e.origin, data: e.data }); });
+w.postMessage({ jsonrpc: "2.0", id: "intruder", method: "byow_info", params: {} }, q.get("target"));
+setTimeout(() => parent.postMessage({ relay: true, got }, q.get("top")), 1500);
+</script>

@@ -1,0 +1,64 @@
+<!doctype html><meta charset="utf-8"><title>byow-check harness</title>
+<body>
+<button id="open">open</button>
+<script>
+// Raw protocol harness. Deliberately does NOT use the BYOW SDK: it tests a wallet against the spec,
+// not against our own client. The wallet is opened from a hidden same-origin iframe, as the SDK does.
+let frame;
+function makeFrame() {
+  frame?.remove();
+  frame = document.createElement("iframe");
+  frame.style.display = "none";
+  document.body.appendChild(frame);
+}
+makeFrame();
+
+const H = (window.H = {
+  msgs: [], winName: "byow-check-" + Math.random().toString(36).slice(2, 10),
+  win: null, walletOrigin: null, relayResult: null,
+  open(url) {
+    const via = frame.contentWindow;
+    H.win = via.open(url, H.winName, "popup=yes,width=440,height=760");
+    H.walletOrigin = null;
+    if (!H.listening) {
+      H.listening = true;
+      // Like the SDK: replies may arrive at the opener iframe or, from wallets that answer event.source, at the top window.
+      const onMsg = (e) => {
+        if (e.source !== H.win) return;
+        if (!H.walletOrigin && e.data && e.data.jsonrpc === "2.0" && e.data.method === "byow_ready") H.walletOrigin = e.origin;
+        H.msgs.push({ t: Date.now(), origin: e.origin, data: e.data });
+      };
+      via.addEventListener("message", onMsg);
+      if (!H.topListening) { H.topListening = true; window.addEventListener("message", onMsg); }
+    }
+    return !!H.win;
+  },
+  mark() { return H.msgs.length; },
+  send(msg, targetOrigin) { H.win.postMessage(msg, targetOrigin || H.walletOrigin); },
+  // JSON-RPC: byow_ready is the one notification; a response is anything with an id and a result or an error.
+  isResponse(d) { return !!d && typeof d === "object" && d.jsonrpc === "2.0" && ("result" in d || "error" in d); },
+  matches(m, spec) {
+    const d = m.data;
+    if (spec.ready) return !!d && d.jsonrpc === "2.0" && d.method === "byow_ready";
+    return H.isResponse(d) && d.id === spec.id;
+  },
+  responses(from = 0) { return H.msgs.slice(from).filter((m) => H.isResponse(m.data)).length; },
+  waitFor(spec, ms, from = 0) {
+    return new Promise((resolve) => {
+      const t0 = Date.now();
+      const tick = () => {
+        const hit = H.msgs.slice(from).find((m) => H.matches(m, spec));
+        if (hit) return resolve(hit);
+        if (Date.now() - t0 > ms) return resolve(null);
+        setTimeout(tick, 40);
+      };
+      tick();
+    });
+  },
+  navigateOpener(url) { frame.contentWindow.location = url; },
+  // The origin-lock check navigates the opener iframe away; give later checks a fresh one (before their click).
+  resetFrame() { makeFrame(); H.listening = false; },
+});
+window.addEventListener("message", (e) => { if (e.data && e.data.relay) H.relayResult = e.data; });
+document.getElementById("open").onclick = () => { window.__opened = H.open(window.__want); };
+</script>

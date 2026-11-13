@@ -1,0 +1,51 @@
+{
+  "name": "byow",
+  "version": "0.2.0-draft.0",
+  "private": true,
+  "description": "Bring Your Own Wallet: a wallet-agnostic connect protocol. One request format over three carriers (window, page, link), a site SDK, a wallet kit, a reference mailbox and a conformance checker.",
+  "type": "module",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/byow-protocol/byow.git" },
+  "homepage": "https://github.com/byow-protocol/byow#readme",
+  "bugs": "https://github.com/byow-protocol/byow/issues",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./wallet": { "types": "./dist/wallet/index.d.ts", "default": "./dist/wallet/index.js" },
+    "./link": { "types": "./dist/link.d.ts", "default": "./dist/link.js" },
+    "./mailbox": { "types": "./dist/mailbox.d.ts", "default": "./dist/mailbox.js" },
+    "./xrpl": { "types": "./dist/xrpl/profile.d.ts", "default": "./dist/xrpl/profile.js" },
+    "./xrpl/wallet": { "types": "./dist/xrpl/wallet.d.ts", "default": "./dist/xrpl/wallet.js" },
+    "./xrpl/signer": { "types": "./dist/xrpl/signer.d.ts", "default": "./dist/xrpl/signer.js" },
+    "./verify": { "types": "./dist/xrpl/verify.d.ts", "default": "./dist/xrpl/verify.js" }
+  },
+  "bin": {
+    "byow-check": "./check/cli.mjs"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "e2e": "vitest run --config vitest.e2e.config.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "check": "node check/cli.mjs"
+  },
+  "peerDependencies": {
+    "xrpl": "^4.0.0 || ^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "xrpl": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "0.28.1",
+    "playwright": "1.62.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10",
+    "xrpl": "5.0.0"
+  }
+}
