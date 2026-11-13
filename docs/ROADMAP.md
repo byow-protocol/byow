@@ -139,6 +139,24 @@ that is Xaman-only today, with payment rows to copy by hand for any other wallet
    `Flags: 131072`. Its one-Batch path stays Xaman's; a BYOW wallet gets the two-payment path.
 3. The bridge gets the site SDK from npm, or carries a copy.
 
+## 4c. The first real site: XRPLClaw sign-in (built 2026-11-12, not deployed)
+
+XRPLClaw's sign-in chooser gained "Another wallet": the user types a wallet's address (Clasp is suggested),
+and the server checks the proof with `verifySignIn` and the ledger. Run in Chromium, WebKit and Firefox
+against a mainnet build of the toy wallet, and against live claspwallet.com up to its passkey screen.
+Building it found three gaps, fixed in the spec and the verifier the same day:
+
+- **A brand-new wallet is not on the ledger.** A fresh Clasp account has never been funded, so `account_info`
+  answers `actNotFound` and `keyMayActFor` had no AccountRoot to read. Only the master key can speak for an
+  account that does not exist, so `keyMayActForAccount(address, key, null)` accepts exactly that (SPEC 5.2).
+  A failed lookup is not "not found".
+- **A site has more than one origin.** xrplclaw.com serves both the apex and `www` without a redirect.
+  `verifySignIn` takes a list of the site's own origins (SPEC 14).
+- **The verifier imported xrpl's own dependencies** (`ripple-keypairs`, `ripple-binary-codec`), which a
+  strict installer does not hoist. It now imports only from `xrpl`, its declared peer.
+
+Still vendored (the site carries copies of six files), which is the case for publishing to npm.
+
 ## 5. Prove before anything freezes
 
 - Real Safari, mobile browsers and in-app browsers. Nothing has been measured on a phone.

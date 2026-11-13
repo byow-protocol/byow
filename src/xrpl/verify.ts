@@ -1,10 +1,10 @@
 // Verification. This is what lets a webmaster accept strangers' wallets without reading a line of crypto:
 // a wallet's claims are only ever believed after they check out here. Runs on a server, or in the page when
-// the site already ships xrpl.js. Optional peer dependency: `xrpl` (brings ripple-keypairs and ripple-binary-codec).
+// the site already ships xrpl.js. Optional peer dependency: `xrpl`.
 
-import { deriveAddress } from "ripple-keypairs";
-import { decode, encode } from "ripple-binary-codec";
-import { hashes, verifySignature } from "xrpl";
+// Everything comes through `xrpl` itself, the one peer dependency: its sub-packages are not ours to import, and a
+// strict installer (pnpm, Yarn PnP) does not hoist them.
+import { decode, deriveAddress, encode, hashes, verifySignature } from "xrpl";
 import { ByowError, type Profile } from "../protocol.js";
 import { SIGN_IN_MEMO_TYPE_HEX, WALLET_FILLS, XRPL_CONNECT, XRPL_SIGN, xrpl, type ConnectResult, type SignResult } from "./profile.js";
 
@@ -13,13 +13,16 @@ const LSF_DISABLE_MASTER = 0x00100000;
 
 type Tx = Record<string, unknown>;
 
+// xrpl's encode is typed for known transactions; ours are untrusted and checked field by field, so it takes any object.
+const encodeTx = (tx: Tx): string => encode(tx as unknown as Parameters<typeof encode>[0]);
+
 /** Decode a blob and insist it is the canonical serialization, so the hash we compute is the one the ledger uses. */
 function decodeCanonical(blob: string): Tx | string {
   if (typeof blob !== "string" || blob.length > 400_000 || !/^[0-9A-Fa-f]+$/.test(blob) || blob.length % 2 !== 0) return "not hex";
   try {
     const tx = decode(blob) as Tx;
     // A blob with the same fields in another order decodes and verifies but hashes differently.
-    return encode(tx) === blob.toUpperCase() ? tx : "not in canonical form";
+    return encodeTx(tx) === blob.toUpperCase() ? tx : "not in canonical form";
   } catch {
     return "does not decode";
   }
@@ -47,8 +50,12 @@ export type SignInCheck =
   | { ok: false; reason: string };
 
 export interface SignInExpectation {
-  /** The origin YOU serve (or, for a link through a mailbox on another host, that mailbox's origin). Never read it from the request. */
-  origin: string;
+  /**
+   * The origin YOU serve (or, for a link through a mailbox on another host, that mailbox's origin). Never read it
+   * from the request. A site served on several origins (an apex and its www) lists them all: a proof for any of
+   * its own origins is a proof for this site.
+   */
+  origin: string | readonly string[];
   chain: string;
   /** The nonce YOU issued. Single use: delete it before you call this. */
   challenge: string;
@@ -88,7 +95,8 @@ export function verifySignIn(proof: string, want: SignInExpectation): SignInChec
     return no("statement does not parse");
   }
   if (typeof s !== "object" || s === null || Array.isArray(s)) return no("statement is not an object");
-  if (s.origin !== want.origin) return no("signed for a different origin");
+  const origins: readonly string[] = typeof want.origin === "string" ? [want.origin] : want.origin;
+  if (typeof s.origin !== "string" || !origins.includes(s.origin)) return no("signed for a different origin");
   if (s.chain !== want.chain) return no("signed for a different chain");
   if (s.challenge !== want.challenge) return no("signed for a different challenge");
   const iat = s.iat;
@@ -118,6 +126,24 @@ export function keyMayActFor(accountRoot: { Account: string; Flags?: number; Reg
   }
   if (signer === accountRoot.Account) return (Number(accountRoot.Flags ?? 0) & LSF_DISABLE_MASTER) === 0;
   return typeof accountRoot.RegularKey === "string" && signer === accountRoot.RegularKey;
+}
+
+/**
+ * The same question for a sign-in, including an account the ledger has never seen. Pass the address the proof
+ * named, its key, and the account's AccountRoot from a validated ledger, or `null` when the ledger answered that
+ * the account does not exist (`actNotFound`). An account that does not exist has no regular key and no disabled
+ * master, so only its master key can speak for it: a brand-new wallet signs in before it is funded. Never pass
+ * `null` because a lookup failed or timed out; that is not an answer.
+ */
+export function keyMayActForAccount(address: string, publicKey: string, accountRoot: { Account: string; Flags?: number; RegularKey?: string } | null): boolean {
+  if (accountRoot === null) {
+    try {
+      return deriveAddress(publicKey) === address;
+    } catch {
+      return false;
+    }
+  }
+  return accountRoot.Account === address && keyMayActFor(accountRoot, publicKey);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -159,7 +185,7 @@ export function checkSignedTx(requested: Tx, txBlob: string, opts: { account?: s
   }
   try {
     // Compared in serialized form, so an amount of "1.0" and one of "1" are the same value, and nothing else is.
-    if (encode(merged) !== txBlob.toUpperCase()) {
+    if (encodeTx(merged) !== txBlob.toUpperCase()) {
       const changed = Object.keys(requested).find((k) => k !== "Flags" && JSON.stringify(requested[k]) !== JSON.stringify(tx[k]));
       return no(`the wallet changed ${changed ?? "a field"}`);
     }
@@ -231,7 +257,7 @@ export function checkSignedPayment(txBlob: string, want: PaymentExpectation): Tx
  * `origin` is the origin proofs must name: this page's, unless requests travel through a mailbox on another host.
  * A server that grants a session still verifies the proof itself; a page's word is not evidence to a server.
  */
-export function xrplVerified(opts: { origin?: string; maxAgeSeconds?: number } = {}): Profile {
+export function xrplVerified(opts: { origin?: string | readonly string[]; maxAgeSeconds?: number } = {}): Profile {
   const fail = (why: string): never => {
     throw new ByowError("invalid_response", `wallet answer failed verification: ${why}`);
   };

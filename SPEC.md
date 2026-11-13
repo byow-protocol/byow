@@ -236,6 +236,12 @@ That proves someone holding that key signed in. Whether the key may act for the 
 say: the key is the account's master key and the master key is not disabled, or it is the account's regular
 key (`keyMayActFor`, one `account_info` lookup). A site guarding anything of value MUST do the lookup.
 
+An account the validated ledger does not hold (`actNotFound`) has never been funded, or was deleted. It has no
+regular key and no disabled master, so only its master key can speak for it: the proof is enough when the key
+derives to the address (`keyMayActForAccount` with no AccountRoot). This is what lets a brand-new wallet sign in
+before it holds any XRP. A lookup that failed or timed out is not an answer, and a site MUST NOT treat it as
+"not found".
+
 ### 5.3 `xrpl_signTransaction`
 
 ```ts
@@ -744,9 +750,11 @@ names and no list.
 2. The client calls `xrpl_connect({ chain, challenge })`, then posts `{ proof, challenge }` to `/login`.
 3. The server deletes the nonce (single use, even on failure) and checks
    `verifySignIn(proof, { origin: <the origin you serve>, chain, challenge })`. The origin and the nonce are
-   the server's own values, never the request's.
+   the server's own values, never the request's. A site served on several origins (an apex and its `www`)
+   passes the list of its own: a proof for any of them is a proof for this site.
 4. If the account matters (it holds value, or grants access), the server looks the account up on a
-   validated ledger and checks `keyMayActFor(accountRoot, publicKey)` (5.2).
+   validated ledger and checks `keyMayActForAccount(address, publicKey, accountRoot)`, with `null` only
+   when the ledger answered that the account does not exist (5.2).
 5. Success sets the session for the address in the proof. The wallet's name, icon and claims played no part.
 
 A site whose requests travel through a mailbox on another host expects that mailbox's origin in the proof

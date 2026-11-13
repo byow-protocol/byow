@@ -6,7 +6,7 @@ import { createWalletCore, createWalletServer } from "../src/wallet/index.js";
 import { describeTx, signInTransaction, type Row } from "../src/xrpl/profile.js";
 import { seedSigner } from "../src/xrpl/signer.js";
 import { xrplHandlers, type XrplNetwork, type XrplReview } from "../src/xrpl/wallet.js";
-import { checkSignedPayment, checkSignedTx, keyMayActFor, verifySignIn, xrplVerified } from "../src/xrpl/verify.js";
+import { checkSignedPayment, checkSignedTx, keyMayActFor, keyMayActForAccount, verifySignIn, xrplVerified } from "../src/xrpl/verify.js";
 
 // Public test seeds only: the XRPL docs' ed25519 example and the genesis secp256k1 seed.
 const ED = Wallet.fromSeed("sEdTM1uX8pu2do5XvTnutH6HsouMaM2");
@@ -60,6 +60,14 @@ describe.each([
     expect(verifySignIn(ok(), want({ origin: "http://site.example" })).ok).toBe(false);
     expect(verifySignIn(ok(), want({ chain: "xrpl:0" }))).toMatchObject({ ok: false, reason: expect.stringContaining("chain") });
     expect(verifySignIn(ok(), want({ challenge: "nonce-999999" }))).toMatchObject({ ok: false, reason: expect.stringContaining("challenge") });
+  });
+
+  it("accepts any of a site's own origins when it lists them, and still nothing else", () => {
+    expect(verifySignIn(ok(), want({ origin: ["https://www.site.example", ORIGIN] })).ok).toBe(true);
+    expect(verifySignIn(ok(), want({ origin: ["https://www.site.example"] }))).toMatchObject({ ok: false, reason: expect.stringContaining("origin") });
+    expect(verifySignIn(ok(), want({ origin: [] })).ok).toBe(false);
+    // A statement whose origin is not a string never matches, even a list that would stringify to it.
+    expect(verifySignIn(signIn(w, {}, { origin: [ORIGIN] }), want({ origin: [ORIGIN] })).ok).toBe(false);
   });
 
   it("refuses a proof that is too old, and one from the future", () => {
@@ -199,6 +207,26 @@ describe("keyMayActFor", () => {
     expect(keyMayActFor({ Account: ED.classicAddress }, "")).toBe(false);
     expect(keyMayActFor({ Account: ED.classicAddress }, "not hex")).toBe(false);
     expect(keyMayActFor({ Account: ED.classicAddress }, "ED12")).toBe(false);
+  });
+});
+
+describe("keyMayActForAccount", () => {
+  it("lets only the master key sign in for an account the ledger has never seen", () => {
+    expect(keyMayActForAccount(ED.classicAddress, ED.publicKey, null)).toBe(true);
+    expect(keyMayActForAccount(SECP.classicAddress, SECP.publicKey, null)).toBe(true);
+    expect(keyMayActForAccount(SECP.classicAddress, ED.publicKey, null)).toBe(false);
+    expect(keyMayActForAccount(ED.classicAddress, "not hex", null)).toBe(false);
+  });
+
+  it("defers to keyMayActFor for an account that exists", () => {
+    expect(keyMayActForAccount(ED.classicAddress, ED.publicKey, { Account: ED.classicAddress })).toBe(true);
+    expect(keyMayActForAccount(ED.classicAddress, ED.publicKey, { Account: ED.classicAddress, Flags: 0x00100000 })).toBe(false);
+    expect(keyMayActForAccount(SECP.classicAddress, ED.publicKey, { Account: SECP.classicAddress, RegularKey: ED.classicAddress })).toBe(true);
+  });
+
+  it("refuses an AccountRoot for a different account than the one signing in", () => {
+    // The root of the account whose regular key this is, handed in for another address by mistake.
+    expect(keyMayActForAccount(ED.classicAddress, ED.publicKey, { Account: SECP.classicAddress, RegularKey: ED.classicAddress })).toBe(false);
   });
 });
 

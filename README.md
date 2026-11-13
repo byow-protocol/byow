@@ -115,10 +115,10 @@ void answerLinkInPage(server.core);               // or this page was opened wit
 **The site's server** (the whole obligation):
 
 ```ts
-import { verifySignIn, keyMayActFor, checkSignedPayment } from "byow/verify";
+import { verifySignIn, keyMayActForAccount, checkSignedPayment } from "byow/verify";
 
-verifySignIn(proof, { origin: MY_ORIGIN, chain, challenge });       // login: the origin and the nonce are yours, not the request's
-keyMayActFor(accountRoot, publicKey);                               // and, where it matters, one ledger lookup
+verifySignIn(proof, { origin: MY_ORIGINS, chain, challenge });      // login: the origins and the nonce are yours, not the request's
+keyMayActForAccount(address, publicKey, accountRoot);               // and, where it matters, one ledger lookup (null = not on the ledger)
 checkSignedPayment(txBlob, { account, destination, amount, destinationTag });   // pay: then submit it and watch the ledger
 ```
 
