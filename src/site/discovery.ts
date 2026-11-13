@@ -1,7 +1,7 @@
 // How a site learns which wallet to talk to. There is deliberately no registry the site must consult and
 // no list this SDK ships: the user names the wallet (typed, remembered, or arriving as ?byow_wallet=).
 
-import { ByowError, safeText } from "../protocol.js";
+import { ByowError, ICON_RE, MAX_ICON_CHARS, safeText } from "../protocol.js";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
@@ -65,11 +65,21 @@ export interface RememberedWallet {
   url: string;
   /** Claimed by the wallet. Display as a claim, next to the origin. */
   name: string;
+  /**
+   * Claimed by the wallet too: the manifest's icon, kept so a returning user recognises their wallet. Held to the
+   * manifest's rule (a small png, jpeg or webp data URI) on the way in and on every read. Never shown larger than,
+   * or instead of, the origin.
+   */
+  icon?: string;
   origin: string;
   lastUsed: number;
 }
 
 const MAX_REMEMBERED = 12;
+
+/** The manifest's icon rule (SPEC 4), applied again to anything read back from storage. */
+const validIcon = (icon: unknown): string | undefined =>
+  typeof icon === "string" && icon.length <= MAX_ICON_CHARS && ICON_RE.test(icon) ? icon : undefined;
 
 /** Wallets this user has used on this site. localStorage on the site's own origin: no secrets, no cross-site state. */
 export function rememberedWallets(storage: Pick<Storage, "getItem" | "setItem"> | null = safeLocalStorage(), key = "byow:wallets") {
@@ -80,7 +90,8 @@ export function rememberedWallets(storage: Pick<Storage, "getItem" | "setItem"> 
       return raw.flatMap((e): RememberedWallet[] => {
         try {
           const u = parseWalletUrl(String(e?.url));
-          return [{ url: u.href, origin: u.origin, name: safeText(String(e?.name ?? ""), 64), lastUsed: Number(e?.lastUsed) || 0 }];
+          const icon = validIcon(e?.icon);
+          return [{ url: u.href, origin: u.origin, name: safeText(String(e?.name ?? ""), 64), ...(icon ? { icon } : {}), lastUsed: Number(e?.lastUsed) || 0 }];
         } catch {
           return []; // a tampered entry is dropped, never trusted
         }
@@ -98,10 +109,12 @@ export function rememberedWallets(storage: Pick<Storage, "getItem" | "setItem"> 
   };
   return {
     list: () => read().sort((a, b) => b.lastUsed - a.lastUsed),
-    remember(url: string, name: string) {
+    /** `icon` is the manifest's, if it sent one. A wallet that stops sending one loses the stored one. */
+    remember(url: string, name: string, icon?: string) {
       const u = parseWalletUrl(url);
       const rest = read().filter((w) => w.url !== u.href);
-      write([{ url: u.href, origin: u.origin, name: safeText(name, 64), lastUsed: Date.now() }, ...rest]);
+      const ok = validIcon(icon);
+      write([{ url: u.href, origin: u.origin, name: safeText(name, 64), ...(ok ? { icon: ok } : {}), lastUsed: Date.now() }, ...rest]);
     },
     forget(url: string) {
       let href = url;

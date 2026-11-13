@@ -105,6 +105,7 @@ describe("walletFromLocation", () => {
 });
 
 describe("rememberedWallets", () => {
+  const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
   const mem = () => {
     const m = new Map<string, string>();
     return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), raw: m };
@@ -125,10 +126,33 @@ describe("rememberedWallets", () => {
     r.forget("https://a.example"); // remembered as ".../", forgotten without the slash
     expect(r.list()).toEqual([]);
   });
-  it("stores only a URL and a claimed name, on the site's own storage", () => {
+  it("stores only a URL, a claimed name and a claimed icon, on the site's own storage", () => {
     const s = mem();
     rememberedWallets(s).remember("https://a.example/app?x=1", "A");
     expect(Object.keys(JSON.parse(s.raw.get("byow:wallets")!)[0]).sort()).toEqual(["lastUsed", "name", "origin", "url"]);
+    rememberedWallets(s).remember("https://a.example/app?x=1", "A", PNG);
+    expect(Object.keys(JSON.parse(s.raw.get("byow:wallets")!)[0]).sort()).toEqual(["icon", "lastUsed", "name", "origin", "url"]);
+  });
+  it("keeps an icon only if it meets the manifest's rule, when stored and when read back", () => {
+    const bad = [
+      "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=", // SVG can carry script and external fetches
+      "https://wallet.example/icon.png", // a fetch on every render, and a tracker
+      "data:image/png;base64,AAAA\nAAAA", // anything after the base64, a newline included
+      "data:image/png;base64," + "A".repeat(48 * 1024),
+      42,
+    ];
+    for (const icon of bad) {
+      const s = mem();
+      rememberedWallets(s).remember("https://a.example/", "A", icon as string);
+      expect(rememberedWallets(s).list()[0], String(icon).slice(0, 40)).not.toHaveProperty("icon");
+      s.setItem("byow:wallets", JSON.stringify([{ url: "https://a.example/", name: "A", icon }])); // tampered storage
+      expect(rememberedWallets(s).list()[0], String(icon).slice(0, 40)).not.toHaveProperty("icon");
+    }
+    const s = mem();
+    rememberedWallets(s).remember("https://a.example/", "A", PNG);
+    expect(rememberedWallets(s).list()[0]).toMatchObject({ icon: PNG });
+    rememberedWallets(s).remember("https://a.example/", "A"); // the wallet stopped sending one
+    expect(rememberedWallets(s).list()[0]).not.toHaveProperty("icon");
   });
   it("drops tampered entries instead of trusting them", () => {
     const s = mem();

@@ -626,7 +626,10 @@ the user or from the browser:
   string and all: a wallet on a shared host cannot serve its origin's root, so the exact URL always has to
   work. A bare domain (`wallet.example`) means that domain's **front door**,
   `https://wallet.example/.well-known/byow`.
-- **Remembered**: `{url, claimed name, lastUsed}` in the site's own `localStorage`.
+- **Remembered**: `{url, claimed name, claimed icon?, lastUsed}` in the site's own `localStorage`, so a
+  returning user sees the wallet they used before. The icon is the manifest's (section 4), held to the same
+  rule when stored and on every read, and dropped when it fails. It is a claim like the name: shown smaller
+  than the origin, never in place of it.
 - **Scanned**: a link any wallet can read (section 8).
 - **`?byow_wallet=<url or domain>`**: published by a wallet as "open this site with me". It **prefills**
   the field. It MUST NOT open anything: a link is not a gesture, and a phishing link can carry it too.
@@ -702,7 +705,7 @@ A site MUST (and its SDK SHOULD make these automatic):
 | S6 | Show a wallet's origin as its identity and its `name` as a labelled claim, smaller | docs; SDK returns both |
 | S7 | Ship no built-in list of wallets (1.1) | yes |
 | S8 | Treat `?byow_wallet=` as prefill only (10) | yes |
-| S9 | Store only a URL and a claimed name for remembered wallets, on the site's own origin; drop tampered entries | yes |
+| S9 | Store only a URL, a claimed name and a claimed icon for remembered wallets, on the site's own origin; drop tampered entries and out-of-spec icons | yes |
 
 On the **window** carrier, also:
 
